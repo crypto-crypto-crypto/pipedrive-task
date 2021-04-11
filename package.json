@@ -1,0 +1,16 @@
+{
+  "name": "pipedrive-task",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "https://github.com/crypto-crypto-crypto/pipedrive-task.git",
+  "author": "JCR <vonzo55@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "start": "node ."
+  },
+  "dependencies": {
+    "@octokit/core": "^3.4.0",
+    "express": "^4.17.1",
+    "pipedrive": "^10.5.0"
+  }
+}
