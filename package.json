@@ -11,6 +11,7 @@
   "dependencies": {
     "@octokit/core": "^3.4.0",
     "express": "^4.17.1",
+    "morgan": "^1.10.0",
     "pipedrive": "^10.5.0"
   }
 }

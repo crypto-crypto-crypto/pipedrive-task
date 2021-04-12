@@ -1,4 +1,5 @@
 const express = require('express');
+const morgan = require('morgan');
 const lib = require('pipedrive');
 const { Octokit } = require("@octokit/core");
 
@@ -6,6 +7,7 @@ const PORT = 8080;
 const GITHUB_GISTS = 'GITHUB_GISTS';
 
 const app = express();
+app.use(morgan('tiny'));
 
 lib.Configuration.apiToken = process.env.PIPEDRIVE_API_TOKEN;
 const octokit = new Octokit({ auth: process.env.GITHUB_API_TOKEN });
@@ -29,6 +31,29 @@ async function getPerson(user) {
 
   return { personId: id, username: name };
 }
+
+app.get('/list', async (req, res) => {
+  try {
+    const response = await lib.DealsController.getAllDeals({});
+    const { data: deals = [] } = response;
+    const persons = new Set();
+    deals
+      .filter(({ org_name }) => org_name === GITHUB_GISTS)
+      .forEach(({ id, person_name, person_id: { value: personId } }) => persons.add(person_name));
+
+    const scannedUsers = {
+      success: true,
+      data: [...persons],
+    };
+
+    res.json(scannedUsers);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error,
+    });
+  }
+});
 
 app.get('/new', async (req, res) => {
   try {
@@ -67,15 +92,11 @@ app.get('/fetch', async (req, res) => {
         return person_name;
       });
 
-    console.log('->personsIds', personsIds);
-
     const activitiesPersonsRequest = [...personsIds].map(id =>
       lib.PersonsController.listActivitiesAssociatedWithAPerson({ id }));
 
     const activitiesUsers = {};
     const activitiesResult = await Promise.all(activitiesPersonsRequest);
-
-    console.log('->activitiesResult', activitiesResult);
 
     activitiesResult.forEach(({ data: activitiesUser }) => {
       if (!activitiesUser) {
@@ -95,8 +116,6 @@ app.get('/fetch', async (req, res) => {
       });
     });
 
-    console.log('-->activitiesUsers', activitiesUsers);
-
     const usersGistsRequest = users.map(user =>
       octokit.request("GET /users/{username}/gists", {
         username: user,
@@ -110,9 +129,7 @@ app.get('/fetch', async (req, res) => {
     usersGists.forEach(({ url, data: gistsUser = [] }) => {
       gistsUser.forEach(gist => {
         const { id, description, owner: { login: username }, updated_at } = gist;
-
         const currentActivities = activitiesUsers[username];
-        console.log('----->currentActivities', currentActivities);
 
         // If the gist is already fetched, skip it
         if (currentActivities && currentActivities.has(id)) {
@@ -141,7 +158,7 @@ app.get('/fetch', async (req, res) => {
   }
 });
 
-app.get('/show', async (req, res) => {
+app.get('/updates', async (req, res) => {
   // Get activities of user
   try {
     const { user } = req.query;
