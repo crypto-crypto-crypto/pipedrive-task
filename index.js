@@ -1,74 +1,55 @@
 const express = require('express');
-const app = express();
 const lib = require('pipedrive');
 const { Octokit } = require("@octokit/core");
 
 const PORT = 8080;
-const PIPEDRIVE_GIST_TRACK = 'PIPEDRIVE_GIST_TRACK';
+const GITHUB_GISTS = 'GITHUB_GISTS';
+
+const app = express();
 
 lib.Configuration.apiToken = process.env.PIPEDRIVE_API_TOKEN;
 const octokit = new Octokit({ auth: process.env.GITHUB_API_TOKEN });
 
-app.set('json spaces', 2)
+app.set('json spaces', 2);
 
 app.listen(PORT, () => {
   console.log(`Listening on port ${PORT}`);
 });
 
-app.get('/deals', async (req, res) => {
-  // const user = await lib.UsersController.getCurrentUserData();
-  try {
-    const deals = await lib.DealsController.getAllDeals({});
-    res.json(deals);
-  } catch (error) {
-    res.status(500).send(error);
+async function getPerson(user) {
+  const { data } = await lib.PersonsController.findPersonsByName({
+    term: user,
+  });
+
+  if (!data || data.length > 1) {
+    return null;
   }
-});
 
-app.get('/persons', async (req, res) => {
-  // const user = await lib.UsersController.getCurrentUserData();
-  const persons = await lib.PersonsController.getAllPersons({});
-  res.json(persons);
-});
+  const { id, name } = data[0];
 
-app.get('/git', async (req, res) => {
-  try {
-    const response = await octokit.request("GET /users/{username}/gists", {
-      // username: 'gr2m',
-      username: 'crypto-crypto-crypto',
-      since: '2021-01-12T00:00:00Z',
-    });
-    const { data } = response;
-    res.json(data);
-  } catch (error) {
-  }
-});
+  return { personId: id, username: name };
+}
 
-app.get('/orgs', async (req, res) => {
-  try {
-    const orgs = await lib.OrganizationsController.getAllOrganizations({
-      // userId: 12125319,
-    });
-    res.json(orgs);
-  } catch (error) {
-    res.status(500).send(error);
-  }
-});
-
-app.get('/track', async (req, res) => {
+app.get('/new', async (req, res) => {
   try {
     const { user } = req.query;
+    const person = await getPerson(user);
+
+    if (person) {
+      throw new Error(`User <b>${user}</b> has been added already`);
+    }
+
     const newDeal = await lib.DealsController.addADeal({
       body: {
-        title: `Gist track for ${user}`,
+        title: `Gists for ${user}`,
         person_id: user,
-        org_id: PIPEDRIVE_GIST_TRACK
+        org_id: GITHUB_GISTS,
       }
     });
 
-    res.json(newDeal);
+    res.send(`User <b>${user}</b> added successfully`);
   } catch (error) {
-    res.status(500).send(error);
+    res.status(500).send(error.toString());
   }
 });
 
@@ -76,44 +57,85 @@ app.get('/fetch', async (req, res) => {
   try {
     const response = await lib.DealsController.getAllDeals({});
     const { data: deals = [] } = response;
-
     const dealUsers = {};
-
+    const personsIds = new Set();
     const users = deals
-      .filter(({ org_name }) => org_name === PIPEDRIVE_GIST_TRACK)
-      .map(({ id, person_name }) => {
+      .filter(({ org_name }) => org_name === GITHUB_GISTS)
+      .map(({ id, person_name, person_id: { value: personId } }) => {
         dealUsers[person_name] = id;
+        personsIds.add(personId);
         return person_name;
       });
 
-    const usersRequest = users.map(user =>
+    console.log('->personsIds', personsIds);
+
+    const activitiesPersonsRequest = [...personsIds].map(id =>
+      lib.PersonsController.listActivitiesAssociatedWithAPerson({ id }));
+
+    const activitiesUsers = {};
+    const activitiesResult = await Promise.all(activitiesPersonsRequest);
+
+    console.log('->activitiesResult', activitiesResult);
+
+    activitiesResult.forEach(({ data: activitiesUser }) => {
+      if (!activitiesUser) {
+        return;
+      }
+
+      activitiesUser.forEach(({ person_name, note }) => {
+        if (!note) {
+          return;
+        }
+
+        if (!activitiesUsers[person_name]) {
+          activitiesUsers[person_name] = new Set();
+        }
+
+        activitiesUsers[person_name].add(note);
+      });
+    });
+
+    console.log('-->activitiesUsers', activitiesUsers);
+
+    const usersGistsRequest = users.map(user =>
       octokit.request("GET /users/{username}/gists", {
         username: user,
-        since: '2021-01-01T00:00:00Z', // FIXME: make it dynamic
+        // since: '2021-01-01T00:00:00Z', // FIXME: make it dynamic
       }));
 
     const newActivitiesRequests = [];
-    const usersGists = await Promise.all(usersRequest);
+    const usersGists = await Promise.all(usersGistsRequest);
+    let counterTotalNewGists = 0;
 
     usersGists.forEach(({ url, data: gistsUser = [] }) => {
-      gistsUser.forEach((obj) => {
-        const { id, description, owner, updated_at } = obj;
+      gistsUser.forEach(gist => {
+        const { id, description, owner: { login: username }, updated_at } = gist;
+
+        const currentActivities = activitiesUsers[username];
+        console.log('----->currentActivities', currentActivities);
+
+        // If the gist is already fetched, skip it
+        if (currentActivities && currentActivities.has(id)) {
+          return;
+        }
+
         const activityName = description || id;
         newActivitiesRequests.push(lib.ActivitiesController.addAnActivity({
           subject: activityName,
-          dealId: dealUsers[owner.login],
-          personId: dealUsers[owner.login],
+          dealId: dealUsers[username],
+          personId: dealUsers[username],
           done: 0,
           note: id, // we store the id of the gist in the note
           // dueDate: updated_at.substring(0, 10), // YYYY-MM-DD
           // dueTime: updated_at.slice(11,16), // HH:MM
         }));
+        counterTotalNewGists++;
       });
     });
 
-    const newActivities = await Promise.all(newActivitiesRequests);
+    await Promise.all(newActivitiesRequests);
 
-    res.status(200).send('OK');
+    res.status(200).send(`New gists: <b>${counterTotalNewGists}</b>`);
   } catch (error) {
     res.status(500).send(error);
   }
@@ -123,16 +145,15 @@ app.get('/show', async (req, res) => {
   // Get activities of user
   try {
     const { user } = req.query;
-    // get id of user based on username
-    const { data } = await lib.PersonsController.findPersonsByName({
-      term: user,
-    });
 
-    if (!data || data.length > 1) {
+    // get id of user based on username
+    const person = await getPerson(user);
+
+    if (!person) {
       throw new Error('User does not exist');
     }
 
-    const { id: personId, name: username } = data[0];
+    const { personId, username } = person;
 
     // filter only activities that haven't seen
     const activitiesResult = await lib.PersonsController.listActivitiesAssociatedWithAPerson({
@@ -162,42 +183,5 @@ app.get('/show', async (req, res) => {
     res.send(page);
   } catch (error) {
     res.send(error.toString());
-  }
-});
-
-app.get('/create', async (req, res) => {
-  try {
-    const newPerson = await lib.PersonsController.addAPerson({
-      body: {
-        name: 'Robbie',
-        // probably org id here
-      }
-    });
-
-    const personId = newPerson.data.id;
-
-    const dealsPerson = await lib.PersonsController.listDealsAssociatedWithAPerson({
-      id: '3',
-    });
-
-    const newDeal = await lib.DealsController.addADeal({
-      body: {
-        title: 'deal from code 5',
-        person_id: personId,
-      }
-    });
-
-    const dealId = newDeal.data.id;
-
-    lib.ActivitiesController.addAnActivity({
-      subject: 'New Gist',
-      // type: '',
-      dealId: dealId,
-      personId: personId,
-    });
-    res.status(500).send('OK');
-  } catch (e) {
-    console.log('Error:', e)
-    res.status(500).send(e);
   }
 });
