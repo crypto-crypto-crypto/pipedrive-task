@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@octokit/core": "^3.4.0",
+    "api-express-exporter": "^1.0.0",
     "express": "^4.17.1",
     "express-prom-bundle": "^6.3.6",
     "morgan": "^1.10.0",

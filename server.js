@@ -3,17 +3,15 @@ const express = require('express');
 const morgan = require('morgan');
 const lib = require('pipedrive');
 const { Octokit } = require("@octokit/core");
-const promBundle = require("express-prom-bundle");
+const metricsMiddleware = require('api-express-exporter');
 
 const PORT = 8080;
 const GITHUB_GISTS = 'GITHUB_GISTS';
 
-const metricsMiddleware = promBundle({ includeMethod: true });
-
 const app = express();
 
 app.use(morgan('tiny'));
-app.use(metricsMiddleware);
+app.use(metricsMiddleware());
 
 lib.Configuration.apiToken = process.env.API_TOKEN_PIPEDRIVE;
 const octokit = new Octokit({ auth: process.env.API_TOKEN_GITHUB });
@@ -21,7 +19,7 @@ const octokit = new Octokit({ auth: process.env.API_TOKEN_GITHUB });
 app.set('json spaces', 2);
 
 app.listen(PORT, () => {
-  // console.log(`Listening on port ${PORT}`);
+  console.log(`Pipedrive gists server listening on port ${PORT}`);
 });
 
 async function getPerson(user) {
