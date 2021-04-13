@@ -1,3 +1,4 @@
+const http = require('http');
 const express = require('express');
 const morgan = require('morgan');
 const lib = require('pipedrive');
@@ -9,13 +10,13 @@ const GITHUB_GISTS = 'GITHUB_GISTS';
 const app = express();
 app.use(morgan('tiny'));
 
-lib.Configuration.apiToken = process.env.PIPEDRIVE_API_TOKEN;
-const octokit = new Octokit({ auth: process.env.GITHUB_API_TOKEN });
+lib.Configuration.apiToken = process.env.API_TOKEN_PIPEDRIVE;
+const octokit = new Octokit({ auth: process.env.API_TOKEN_GITHUB });
 
 app.set('json spaces', 2);
 
 app.listen(PORT, () => {
-  console.log(`Listening on port ${PORT}`);
+  // console.log(`Listening on port ${PORT}`);
 });
 
 async function getPerson(user) {
@@ -116,11 +117,8 @@ app.get('/fetch', async (req, res) => {
       });
     });
 
-    const usersGistsRequest = users.map(user =>
-      octokit.request("GET /users/{username}/gists", {
-        username: user,
-        // since: '2021-01-01T00:00:00Z', // FIXME: make it dynamic
-      }));
+    const usersGistsRequest = users.map(username =>
+      octokit.request("GET /users/{username}/gists", { username }));
 
     const newActivitiesRequests = [];
     const usersGists = await Promise.all(usersGistsRequest);
@@ -142,9 +140,7 @@ app.get('/fetch', async (req, res) => {
           dealId: dealUsers[username],
           personId: dealUsers[username],
           done: 0,
-          note: id, // we store the id of the gist in the note
-          // dueDate: updated_at.substring(0, 10), // YYYY-MM-DD
-          // dueTime: updated_at.slice(11,16), // HH:MM
+          note: id,
         }));
         counterTotalNewGists++;
       });
@@ -158,7 +154,7 @@ app.get('/fetch', async (req, res) => {
   }
 });
 
-app.get('/updates', async (req, res) => {
+app.get('/show', async (req, res) => {
   // Get activities of user
   try {
     const { user } = req.query;
@@ -190,10 +186,7 @@ app.get('/updates', async (req, res) => {
 
     // update status of retireved activities after showing them
     const updateActivitiesRequest = activitesUser.map(
-      ({ id }) => lib.ActivitiesController.updateEditAnActivity({
-        id,
-        done: 1,
-      }));
+      ({ id }) => lib.ActivitiesController.updateEditAnActivity({ id, done: 1 }));
 
     await Promise.all(updateActivitiesRequest);
 
@@ -202,3 +195,6 @@ app.get('/updates', async (req, res) => {
     res.send(error.toString());
   }
 });
+
+// Execute fetch queries to update the database every 5 seconds
+setInterval(() => http.get(`http://localhost:${PORT}/fetch`), 5 * 1000);

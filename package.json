@@ -1,7 +1,7 @@
 {
   "name": "pipedrive-task",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.js",
   "repository": "https://github.com/crypto-crypto-crypto/pipedrive-task.git",
   "author": "JCR <vonzo55@gmail.com>",
   "license": "MIT",
