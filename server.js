@@ -62,7 +62,7 @@ app.get('/new', async (req, res) => {
     const person = await getPerson(user);
 
     if (person) {
-      throw new Error(`User <b>${user}</b> has been added already`);
+      throw new Error(`User <b>${user}</b> has been added already.`);
     }
 
     const newDeal = await lib.DealsController.addADeal({
@@ -73,7 +73,7 @@ app.get('/new', async (req, res) => {
       }
     });
 
-    res.send(`User <b>${user}</b> added successfully`);
+    res.send(`User <b>${user}</b> added successfully.`);
   } catch (error) {
     res.status(500).send(error.toString());
   }
