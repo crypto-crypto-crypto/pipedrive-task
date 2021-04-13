@@ -3,7 +3,7 @@ const express = require('express');
 const morgan = require('morgan');
 const lib = require('pipedrive');
 const { Octokit } = require("@octokit/core");
-const metricsMiddleware = require('api-express-exporter');
+const metricsMiddleware = require('express-prom-bundle');
 
 const PORT = 8080;
 const GITHUB_GISTS = 'GITHUB_GISTS';
@@ -11,7 +11,9 @@ const GITHUB_GISTS = 'GITHUB_GISTS';
 const app = express();
 
 app.use(morgan('tiny'));
-app.use(metricsMiddleware());
+app.use(metricsMiddleware({
+  includeMethod: true,
+}));
 
 lib.Configuration.apiToken = process.env.API_TOKEN_PIPEDRIVE;
 const octokit = new Octokit({ auth: process.env.API_TOKEN_GITHUB });
