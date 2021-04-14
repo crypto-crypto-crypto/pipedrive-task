@@ -3,8 +3,8 @@
 
 ## Description
 
-This application tracks Github users' gists with Pipedrive, and also provides a minimal interface and endpoints to show and perform data states.
-For this, the user has to specify the Github users to be tracked. The application synchronizes the dataset of users with Pipedrive's respective entities. In this way, Pipedrive serves as a database and we avoid using intermediate databases.
+This application syncs Github users' gists with Pipedrive. It provides a minimal interface and endpoints to show and perform data states.
+For this, the user has to specify the Github users to be tracked. The application synchronizes the dataset of users with Pipedrive's suitable entities. In this way, Pipedrive serves as a database and we avoid using intermediate databases.
 
 ## Try it out!
 - [104.236.100.141](104.236.107.134) Application
@@ -28,7 +28,7 @@ This project uses the following list of technologies:
 - Docker Hub (for container registry)
 
 ### Flow of execution and assumptions
-- The user adds a new username to the program. Every new user is created in pipedrive as a __Contact__. The program also creates a __Deal__ under the name "Gists for {username}" within the __Organization__ called "GITHUB_GISTS" (This avoids overlaping with current Deals). The newly created __Deal__ will keep Github user's gists as Pipedrive's __Activities__.
+- The user adds a new username to the program. Every new user is created in pipedrive as a __Contact__. The program also creates a __Deal__ under the name "Gists for {username}" within the __Organization__ called "GITHUB_GISTS" (This avoids overlaping with current Deals). The newly created __Deal__ will keep Github user's gists as Pipedrive's __Activities__. Every activity will carry the id of the gist as its description.
 - When the user hits the `/show` endpoint, these gists will be marked as "seen" so the user won't see the same activities when it refreshes the page. In pipedrive terms, this activity (gist) is marked as done. In this way we make the seen/unseen logic using the "done" field. We also use the field "note" of the activity to hold the "id" of the gist.
 - In background, the program will keep the Pipedrive database synchronized with the users' gists by performing repeated calls to `/fetch` in an interval of 5 seconds. The program will only add activities that differ from the user's unseen gists.
 
@@ -103,9 +103,9 @@ $ docker run \
 ### Fist time setup
 
 We first need to prepare a cloud environment for the code to be deployed.
-The option of choice in this implementation is Digital Ocean. We need to generate an API token in order to provision our resources programatically¿ instead of creating our resources and dependencies manually.
+The option of choice of this implementation is Digital Ocean. We need to generate an API token in order to provision our resources programatically. Thus, avoiding the creation of our resources and dependencies manually.
 
-For CI/CD this project uses Github Workflow to manage the build, and deploy of our source code.
+For Continuous integration and delivery, this project relies on Github Workflow to execute the stages of build and deploy of our source code.
 It's important to create secret variables that are going to be used in the pipeline runtime.
 
 We also generate SSH Keys in the Digital Ocean console. Running `ssh-keygen` for the generation of a key pair and copying and pasting the public key into Digital Ocean's SSH Key panel will suffice.
@@ -157,12 +157,33 @@ Our pipeline uses sentible data (as private tokens and ssh keys). We shouldn't e
 
 Now we need to deploy our source code as docker images into the newly created machines.
 Automatic deployment is done via github actions through two stages: `build_and_push` and `deploy`.
-The first will build the docker image for the source code, then it will publish to a public container registry (Docker Hub in this case).
+The first, will build the docker image for the source code, then it will publish to a public container registry (Docker Hub in this case).
 When this step is done, the action will access to the digital ocean instance via SSH, it will pull the latest image of our code and it will restart automatically. In this way we achieve push and deploy in one single pass. The complete source code for the workflow can be seen in the file [.github/workflows/pipeline.yml](https://github.com/crypto-crypto-crypto/pipedrive-task/blob/main/.github/workflows/pipeline.yml). Observe that the flag `--restart always` in docker will keep the service alive regarless of the failures. This is a simple way to achieve resiciency.
 
 ![](images/env_1.png)
 
 ### Monitoring
+
+The source code for the monitoring is under `/monitor`, which is a boilerplate code adepted from [stefanprodan/dockprom](https://github.com/stefanprodan/dockprom). A new job entry is needed to make prometheus fetch the health status of our program.
+
+```bash
+$ cat monitor/prometheus/prometheus.yml
+...
+- job_name: 'nodejs'
+  scrape_interval: 10s
+  honor_labels: true
+  static_configs:
+    - targets: ['104.236.107.134:80']
+...
+```
+
+Now we start up the docker cluster with the monitoring instances by using docker-compose. 
+
+```bash
+$ cd monitor
+$ docker-compose up --build -d
+...
+```
 
 The application exposes an endpoint in /metrics which output looks like:
 ```text
@@ -232,5 +253,16 @@ We can see that the implementation of the part II demanded the longest time. My 
 - Implementing the features with the APIs in a way that we don't keep states locally or in a external database.
 - It was the first time using Github Actions, so it was a process of multiple trial and errors.
 - Getting the monitoring service and the application work together was tricky at first.
+
+## References
+
+- https://developers.pipedrive.com/docs/api/v1/#!/Activities/getActivity
+- https://github.com/crypto-crypto-crypto/client-nodejs#persons_controller
+- https://docs.github.com/en/rest/reference/gists#list-gists-for-a-user
+- https://github.com/stefanprodan/dockprom
+- https://medium.com/teamzerolabs/node-js-monitoring-with-prometheus-grafana-3056362ccb80
+- https://codersociety.com/blog/articles/nodejs-application-monitoring-with-prometheus-and-grafana
+- https://community.tibco.com/wiki/monitoring-your-nodejs-apps-prometheus
+- https://docs.github.com/en/actions/learn-github-actions/managing-complex-workflows
 
 > Carlos Ramos, 13th April 2021
